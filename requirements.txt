@@ -1,0 +1,13 @@
+# Add the linters and code formatters
+flake8
+black
+pytest
+
+click
+
+# Build to make pyproject.toml work
+# https://pypa-build.readthedocs.io/en/latest/index.html
+# build
+
+# release to pypi
+#twine
