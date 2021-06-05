@@ -31,9 +31,8 @@ from datetime import datetime
 # 3rd Party - From pip
 
 import click
-import requests
-from appdirs import AppDirs
 
+from appdirs import AppDirs
 from bs4 import BeautifulSoup, SoupStrainer
 
 
@@ -94,47 +93,25 @@ def process_email(**kwargs):
         # text/plain
         # text/html
 
-        if msg.is_multipart():
+        contents = [p.get_payload(decode=True) for p in msg.get_payload()] if msg.is_multipart() else [msg.get_payload(decode=True)]
 
-            # https://stackoverflow.com/questions/17874360/python-how-to-parse-the-body-from-a-raw-email-given-that-raw-email-does-not
-            # if b.is_multipart():
-            #     for payload in b.get_payload():
-            #         # if payload.is_multipart(): ...
-            #         print payload.get_payload()
-            # else:
-            #     print b.get_payload()
+        for body in contents:
 
-            raise NotImplementedError("Handling multipart messages is not implemented!")
+            parser = 'html.parser'  # 'html.parser' or 'lxml' (preferred) or 'html5lib', if installed
+            for l in BeautifulSoup(body, parser, parse_only=SoupStrainer('a')):
 
-        else:
+                # We only want anchor tags with actual href attributes and text
+                if l.has_attr('href') and l.string is not None and len(l.string) > 0:
 
-            if msg.get_content_type() == 'text/html':
+                    total_urls += 1
 
-                body = msg.get_payload(decode=True)
+                    if l['href'] not in links:
+                        links[l['href']] = l.string
 
-                parser = 'html.parser'  # 'html.parser' or 'lxml' (preferred) or 'html5lib', if installed
-                for l in BeautifulSoup(body, parser, parse_only=SoupStrainer('a')):
+                    else:
 
-                    # We only want anchor tags with actual href attributes and text
-                    if l.has_attr('href') and l.string is not None and len(l.string) > 0:
-
-                        total_urls += 1
-
-                        if l['href'] not in links:
-                            links[l['href']] = l.string
-
-                        else:
-
-                            if links[l['href']] != l.string:
-                                click.echo(f"WARNING - {l['href']} exists, but has different string!")
-
-            elif msg.get_content_type() == 'text/plain':
-
-                raise NotImplementedError("Handling `text/plain` messages is not implemented!")
-
-            else:
-
-                raise ValueError(f'{msg.get_content_type()} type messages not supported.')
+                        if links[l['href']] != l.string:
+                            click.echo(f"WARNING - {l['href']} exists, but has different string!")
 
     return links, total_urls
 
@@ -207,22 +184,6 @@ def links_to_csv(links, **kwargs):
                 writer.writerow({'title': title, 'url': url})
 
     return output
-
-    # for k, v in filtered_links.items():
-    #     click.echo(f'{k:<28} {len(v):>3}')
-
-    #     if kwargs['verbose']:
-    #         for url, title in v.items():
-    #             click.echo(f'\t {title} -> {url}')
-
-    # with open('names.csv', 'w', newline='') as csvfile:
-    #     fieldnames = ['first_name', 'last_name']
-    #     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-    #     writer.writeheader()
-    #     writer.writerow({'first_name': 'Baked', 'last_name': 'Beans'})
-    #     writer.writerow({'first_name': 'Lovely', 'last_name': 'Spam'})
-    #     writer.writerow({'first_name': 'Wonderful', 'last_name': 'Spam'})
 
 
 
