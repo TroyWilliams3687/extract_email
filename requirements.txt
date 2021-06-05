@@ -1,9 +1,12 @@
-# Add the linters and code formatters
+# Add the linters aimport requestsnd code formatters
 flake8
 black
 pytest
 
 click
+beautifulsoup4
+lxml
+requests
 
 # Build to make pyproject.toml work
 # https://pypa-build.readthedocs.io/en/latest/index.html
