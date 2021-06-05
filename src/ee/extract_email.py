@@ -24,6 +24,7 @@ import logging
 
 from pathlib import Path
 from email import message_from_string
+from urllib.parse import urlparse, parse_qs
 
 # ------------
 # 3rd Party - From pip
@@ -59,7 +60,7 @@ log = logging.getLogger(__name__)
 @click.version_option()
 @click.argument('search', type=click.Path(exists=True))
 @click.option(
-    "--launch", is_flag=True, help="Launch the URLs in the browser."
+    "--launch-pdf", is_flag=True, help="Launch the URLs in the browser."
 )
 @click.option(
     "--verbose", is_flag=True, help="Launch the URLs in the browser."
@@ -74,7 +75,7 @@ def main(*args, **kwargs):
 
     # Usage
 
-    $ extract --verbose --launch "/home/troy/tmp/extract tbird email"
+    $ extract "/home/troy/tmp/extract tbird email" --verbose --launch-pdf
 
     Reference:
 
@@ -86,13 +87,12 @@ def main(*args, **kwargs):
 
     # Store the links mapped to the link description
     links = {}
+    total_urls = 0
 
     search = Path(kwargs['search'])
 
     for f in search.rglob("*.eml"):
-
-        if kwargs['verbose']:
-            click.echo(f'Processing {f.name}...')
+        click.echo(f'Processing {f.name}...')
 
         msg = message_from_string(f.read_text())
 
@@ -139,18 +139,16 @@ def main(*args, **kwargs):
                     # We only want anchor tags with actual href attributes and text
                     if l.has_attr('href') and l.string is not None and len(l.string) > 0:
 
+                        total_urls += 1
+
                         if l['href'] not in links:
                             links[l['href']] = l.string
 
                         else:
-                            if kwargs['verbose']:
-                                click.echo('Duplicate URL...')
+                            # if kwargs['verbose']:
+                            #     click.echo('Duplicate URL...')
 
                             if links[l['href']] != l.string:
-
-                                if not kwargs['verbose']:
-                                    click.echo(f'Processing {f.name}...')
-
                                 click.echo(f"WARNING - {l['href']} exists, but has different string!")
 
             elif msg.get_content_type() == 'text/plain':
@@ -161,18 +159,116 @@ def main(*args, **kwargs):
 
                 raise ValueError(f'{msg.get_content_type()} type messages not supported.')
 
-
     if links:
 
         click.echo()
         click.echo('--------')
-        click.echo(f'Found {len(links)}...')
+        click.echo(f'Unique URLS: {len(links)}...')
+        click.echo(f'Total URLS:  {total_urls}...')
+
+
+        filtered_links = {}
+
+        for url, v in links.items():
+            parsed = urlparse(url)
+
+            if parsed.netloc in ['scholar.google.com', 'scholar.google.ca']:
+
+                # At this point for google scholar, we are only
+                # interested in the links
+
+                if parsed.path not in ['/scholar_url' ]:
+
+                    # if kwargs['verbose']:
+                    #     click.echo('Skipping non-url links...')
+                    continue
+
+                # Process the query and attemp to extract the link url
+                pq = parse_qs(parsed.query)
+
+                # There should only be 1, otherwise raise an error and
+                # make a modification
+                if len(pq['url']) != 1:
+                    raise ValueError(f'INVALID URL in QUERY - {parsed}...')
+
+                for query_url in pq['url']:
+                    query_url_parsed = urlparse(query_url)
+                    filtered_links.setdefault(query_url_parsed.netloc, {})[query_url] = v
+
+            else:
+                # Not Google Scholars
+                filtered_links.setdefault('NOT HANDLED', {})[url] = v
+
+
+        # We shouldn't have any 'NOT HANDLED' links, they should be
+        # filtered
+        if 'NOT HANDLED' in filtered_links:
+
+            for url, v in filtered_links["NOT HANDLED"].items():
+                click.echo(f'NOT HANDLED - `{v}` - {url}')
+
+            raise KeyError('Other links were detected in the list - these were not handled!')
+
+        for k, v in filtered_links.items():
+            click.echo(f'{k:<28} {len(v):>3}')
+
+            if kwargs['verbose']:
+                for url, title in v.items():
+                    click.echo(f'\t {title} -> {url}')
+
+        if kwargs['verbose']:
+            click.echo()
+            for k, v in filtered_links.items():
+                click.echo(f'{k:<28}')
+
+                for url, title in v.items():
+                    click.echo(f'- `{title}` -> {url}')
+
+                click.echo()
+
+        # At this point we have a list of URLS filtered by domain, let's
+        # see if we have any pdf links
+
+        pdf_list = {url:title for k,v in filtered_links.items() for url, title in v.items() if url.lower().endswith(".pdf")}
+
+        click.echo(f'Direct PDF Links: {len(pdf_list)}')
+        for url, title in pdf_list.items():
+            click.echo(f'- `{title}` -> {url}')
+
+        # Also have a list of domains that typically provide pdfs but not in the links
+
+
+        # Launch PDF
+
+        if kwargs['launch_pdf']:
+            for url, title in pdf_list.items():
+                click.echo(f'Launching {url}')
+                click.launch(url)
+
+
+        # ---------
+        # Sort the links by ones that point directly to pdf files
+
+
+        # session = requests.Session()
+        # session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+
+        # for url,v in links.items():
+
+        #     r = session.get(url)
+
+        #     for r in r.history:
+        #         click.echo(r.url)
+
+        #     click.echo(r.url)
+        #     return
+
         # for url,v in links.items():
         #     click.echo(f'{v}; {url}')
 
 
-        if kwargs['launch']:
-            click.echo('Launching...')
-            for k,v in links.items():
-                click.echo(f'Launching {v}...')
-                click.launch(k)
+        # if kwargs['launch']:
+        #     click.echo('Launching...')
+        #     for k,v in links.items():
+        #         click.echo(f'Launching {v}...')
+        #         click.launch(k)
