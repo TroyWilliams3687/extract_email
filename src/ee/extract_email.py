@@ -19,18 +19,20 @@ a standard to them
 # ------------
 # System Modules - Included with Python
 
-import sys
 import logging
+import csv
 
 from pathlib import Path
 from email import message_from_string
 from urllib.parse import urlparse, parse_qs
+from datetime import datetime
 
 # ------------
 # 3rd Party - From pip
 
 import click
 import requests
+from appdirs import AppDirs
 
 from bs4 import BeautifulSoup, SoupStrainer
 
@@ -56,60 +58,37 @@ logger.addHandler(console)
 log = logging.getLogger(__name__)
 # -------------
 
-@click.command()
-@click.version_option()
-@click.argument('search', type=click.Path(exists=True))
-@click.option(
-    "--launch-pdf", is_flag=True, help="Launch the URLs in the browser."
-)
-@click.option(
-    "--verbose", is_flag=True, help="Launch the URLs in the browser."
-)
-@click.pass_context
-def main(*args, **kwargs):
+__appname__ = "extract_email"
+__company__ = "bluebill.net"
+
+
+def cache_path():
     """
-
-    Extract URL links from .eml messages and present the results deduplicated
-
-    Optionally, it should be able to launch them in the browser
-
-    # Usage
-
-    $ extract "/home/troy/tmp/extract tbird email" --verbose --launch-pdf
-
-    Reference:
-
-    - https://docs.python.org/3/library/email.message.html
-    - https://docs.python.org/3/library/email.parser.html
-    - https://docs.python.org/3/library/email.html
+    The paths that the application will commonly use for storing settings
+    and caching things.
 
     """
 
-    # Store the links mapped to the link description
-    links = {}
-    total_urls = 0
+    dirs = AppDirs()
+
+    cache_path = Path(dirs.user_config_dir).joinpath(__company__).joinpath(__appname__)
+    cache_path.mkdir(parents=True, exist_ok=True)
+
+    return cache_path
+
+def process_email(**kwargs):
+    """
+    """
 
     search = Path(kwargs['search'])
+
+    links = {}
+    total_urls = 0
 
     for f in search.rglob("*.eml"):
         click.echo(f'Processing {f.name}...')
 
         msg = message_from_string(f.read_text())
-
-        # >>> click.echo(msg.keys())
-        # ['Delivered-To', 'Received', 'X-Received', 'ARC-Seal', 'ARC-Message-Signature', 'ARC-Authentication-Results', 'Return-Path', 'Received', 'Received-SPF', 'Authentication-Results', 'DKIM-Signature', 'X-Google-DKIM-Signature', 'X-Gm-Message-State', 'X-Google-Smtp-Source', 'MIME-Version', 'X-Received', 'Date', 'Message-ID', 'Subject', 'From', 'To', 'Content-Type', 'Content-Transfer-Encoding']
-
-        # click.echo(f'{msg.get_content_type()=}')
-        # click.echo(f'{msg.get_content_maintype()=}')
-        # click.echo(f'{msg.get_content_subtype()=}')
-        # click.echo(f'{msg.get_default_type()=}')
-        # click.echo(f'{msg.is_multipart()=}')
-
-        # msg.get_content_type()='text/html'
-        # msg.get_content_maintype()='text'
-        # msg.get_content_subtype()='html'
-        # msg.get_default_type()='text/plain'
-        # msg.is_multipart()=False
 
         # msg.get_content_type() can be one of two types we are interested in:
         # text/plain
@@ -145,8 +124,6 @@ def main(*args, **kwargs):
                             links[l['href']] = l.string
 
                         else:
-                            # if kwargs['verbose']:
-                            #     click.echo('Duplicate URL...')
 
                             if links[l['href']] != l.string:
                                 click.echo(f"WARNING - {l['href']} exists, but has different string!")
@@ -159,116 +136,175 @@ def main(*args, **kwargs):
 
                 raise ValueError(f'{msg.get_content_type()} type messages not supported.')
 
-    if links:
+    return links, total_urls
 
+def filter_links(links, **kwargs):
+    """
+    """
+
+    filtered_links = {}
+
+    for url, v in links.items():
+        parsed = urlparse(url)
+
+        if parsed.netloc in ['scholar.google.com', 'scholar.google.ca']:
+
+            # At this point for google scholar, we are only
+            # interested in the links
+
+            if parsed.path not in ['/scholar_url' ]:
+                continue
+
+            # Process the query and attemp to extract the link url
+            pq = parse_qs(parsed.query)
+
+            # There should only be 1, otherwise raise an error and
+            # make a modification
+            if len(pq['url']) != 1:
+                raise ValueError(f'INVALID URL in QUERY - {parsed}...')
+
+            for query_url in pq['url']:
+                query_url_parsed = urlparse(query_url)
+                filtered_links.setdefault(query_url_parsed.netloc, {})[query_url] = v
+
+        else:
+            # Not Google Scholars
+            filtered_links.setdefault('NOT HANDLED', {})[url] = v
+
+    return filtered_links
+
+def display_filtered_links(filtered_links, **kwargs):
+    """
+    """
+
+    for k, v in filtered_links.items():
+        click.echo(f'{k:<28} {len(v):>3}')
+
+    click.echo('---------')
+
+    if kwargs['verbose']:
         click.echo()
-        click.echo('--------')
-        click.echo(f'Unique URLS: {len(links)}...')
-        click.echo(f'Total URLS:  {total_urls}...')
-
-
-        filtered_links = {}
-
-        for url, v in links.items():
-            parsed = urlparse(url)
-
-            if parsed.netloc in ['scholar.google.com', 'scholar.google.ca']:
-
-                # At this point for google scholar, we are only
-                # interested in the links
-
-                if parsed.path not in ['/scholar_url' ]:
-
-                    # if kwargs['verbose']:
-                    #     click.echo('Skipping non-url links...')
-                    continue
-
-                # Process the query and attemp to extract the link url
-                pq = parse_qs(parsed.query)
-
-                # There should only be 1, otherwise raise an error and
-                # make a modification
-                if len(pq['url']) != 1:
-                    raise ValueError(f'INVALID URL in QUERY - {parsed}...')
-
-                for query_url in pq['url']:
-                    query_url_parsed = urlparse(query_url)
-                    filtered_links.setdefault(query_url_parsed.netloc, {})[query_url] = v
-
-            else:
-                # Not Google Scholars
-                filtered_links.setdefault('NOT HANDLED', {})[url] = v
-
-
-        # We shouldn't have any 'NOT HANDLED' links, they should be
-        # filtered
-        if 'NOT HANDLED' in filtered_links:
-
-            for url, v in filtered_links["NOT HANDLED"].items():
-                click.echo(f'NOT HANDLED - `{v}` - {url}')
-
-            raise KeyError('Other links were detected in the list - these were not handled!')
-
         for k, v in filtered_links.items():
-            click.echo(f'{k:<28} {len(v):>3}')
+            click.echo(f'{k:<28}')
 
-            if kwargs['verbose']:
-                for url, title in v.items():
-                    click.echo(f'\t {title} -> {url}')
+            for url, title in v.items():
+                click.echo(f'- `{title}` -> {url}')
 
-        if kwargs['verbose']:
             click.echo()
-            for k, v in filtered_links.items():
-                click.echo(f'{k:<28}')
 
-                for url, title in v.items():
-                    click.echo(f'- `{title}` -> {url}')
+def links_to_csv(links, **kwargs):
+    """
+    """
+    output = cache_path().joinpath(f'{datetime.now().isoformat(timespec="minutes")}.csv')
 
-                click.echo()
+    with output.open("w", encoding="utf-8") as fo:
 
-        # At this point we have a list of URLS filtered by domain, let's
-        # see if we have any pdf links
+        writer = csv.DictWriter(fo, fieldnames=['title', 'url'])
+        writer.writeheader()
 
-        pdf_list = {url:title for k,v in filtered_links.items() for url, title in v.items() if url.lower().endswith(".pdf")}
+        for k, v in links.items():
+            for url, title in v.items():
+                writer.writerow({'title': title, 'url': url})
 
-        click.echo(f'Direct PDF Links: {len(pdf_list)}')
+    return output
+
+    # for k, v in filtered_links.items():
+    #     click.echo(f'{k:<28} {len(v):>3}')
+
+    #     if kwargs['verbose']:
+    #         for url, title in v.items():
+    #             click.echo(f'\t {title} -> {url}')
+
+    # with open('names.csv', 'w', newline='') as csvfile:
+    #     fieldnames = ['first_name', 'last_name']
+    #     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+    #     writer.writeheader()
+    #     writer.writerow({'first_name': 'Baked', 'last_name': 'Beans'})
+    #     writer.writerow({'first_name': 'Lovely', 'last_name': 'Spam'})
+    #     writer.writerow({'first_name': 'Wonderful', 'last_name': 'Spam'})
+
+
+
+@click.command()
+@click.version_option()
+@click.argument('search', type=click.Path(exists=True))
+@click.option(
+    "--launch-pdf", is_flag=True, help="Launch the PDF URLs in the browser."
+)
+@click.option(
+    "--verbose", is_flag=True, help="Launch the URLs in the browser."
+)
+@click.option(
+    "--launch-csv", is_flag=True, help="Launch the URLs in your default CSV viewer."
+)
+@click.pass_context
+def main(*args, **kwargs):
+    """
+
+    Extract URL links from .eml messages and present the results deduplicated
+
+    Optionally, it should be able to launch them in the browser
+
+    # Usage
+
+    $ extract "/home/troy/tmp/extract tbird email" --verbose --launch-pdf
+    $ extract "/home/troy/tmp/extract tbird email" --verbose --launch-csv
+
+
+    Reference:
+
+    - https://docs.python.org/3/library/email.message.html
+    - https://docs.python.org/3/library/email.parser.html
+    - https://docs.python.org/3/library/email.html
+
+    """
+
+    links, total_urls = process_email(**kwargs)
+
+    click.echo()
+    click.echo('--------')
+    click.echo(f'Unique URLS: {len(links)}...')
+    click.echo(f'Total URLS:  {total_urls}...')
+
+    if not links:
+        return
+
+
+    filtered_links = filter_links(links, **kwargs)
+
+    # We shouldn't have any 'NOT HANDLED' links, they should be
+    # filtered
+    if 'NOT HANDLED' in filtered_links:
+
+        for url, v in filtered_links["NOT HANDLED"].items():
+            click.echo(f'NOT HANDLED - `{v}` - {url}')
+
+        raise KeyError('Other links were detected in the list - these were not handled!')
+
+    display_filtered_links(filtered_links, **kwargs)
+
+    # At this point we have a list of URLS filtered by domain, let's
+    # see if we have any pdf links
+
+    pdf_list = {url:title for k,v in filtered_links.items() for url, title in v.items() if url.lower().endswith(".pdf")}
+
+    click.echo(f'Direct PDF Links: {len(pdf_list)}')
+    for url, title in pdf_list.items():
+        click.echo(f'- `{title}` -> {url}')
+
+    # Also have a list of domains that typically provide pdfs but not in the links
+
+    # Launch PDF?
+    if kwargs['launch_pdf']:
         for url, title in pdf_list.items():
-            click.echo(f'- `{title}` -> {url}')
+            click.echo(f'Launching {url}')
+            click.launch(url)
 
-        # Also have a list of domains that typically provide pdfs but not in the links
-
-
-        # Launch PDF
-
-        if kwargs['launch_pdf']:
-            for url, title in pdf_list.items():
-                click.echo(f'Launching {url}')
-                click.launch(url)
+    # Launch CSV?
+    if kwargs['launch_csv']:
+        csv_file = links_to_csv(filtered_links, **kwargs)
+        click.echo(f'Launching {csv_file}...')
+        click.launch(str(csv_file))
 
 
-        # ---------
-        # Sort the links by ones that point directly to pdf files
-
-
-        # session = requests.Session()
-        # session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-
-        # for url,v in links.items():
-
-        #     r = session.get(url)
-
-        #     for r in r.history:
-        #         click.echo(r.url)
-
-        #     click.echo(r.url)
-        #     return
-
-        # for url,v in links.items():
-        #     click.echo(f'{v}; {url}')
-
-
-        # if kwargs['launch']:
-        #     click.echo('Launching...')
-        #     for k,v in links.items():
-        #         click.echo(f'Launching {v}...')
-        #         click.launch(k)
