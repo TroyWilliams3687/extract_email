@@ -144,7 +144,30 @@ def filter_links(links, **kwargs):
                 query_url_parsed = urlparse(query_url)
                 filtered_links.setdefault(query_url_parsed.netloc, {})[query_url] = v
 
+        elif parsed.netloc == 'www.researchgate.net':
+
+            if parsed.path in [
+                '/help/whitelist-email',
+                '/go.Out.publicationAdded.html',
+                '/privacy-policy',
+                '/terms-of-service',
+                '/go.Out.followedProjectUpdatesNotification.html'
+                '/imprint',
+                '//',
+                '/imprint',
+                '/browse.BrowseSuggestResearcher.html',
+                '/go.Out.followMe.html',
+                '/profile/Troy-Williams/experience',
+                '/profile/Troy-Williams/experience',
+                '/profile.ProfilePrivacySettings.html',
+                '/unsubscribe/mailingRgScoreStatsDigestEnabled',
+            ]:
+                continue
+
+            filtered_links.setdefault(query_url_parsed.netloc, {})[url] = v
+
         else:
+
             # Not Google Scholars
             filtered_links.setdefault('NOT HANDLED', {})[url] = v
 
@@ -241,7 +264,7 @@ def main(*args, **kwargs):
         for url, v in filtered_links["NOT HANDLED"].items():
             click.echo(f'NOT HANDLED - `{v}` - {url}')
 
-        raise KeyError('Other links were detected in the list - these were not handled!')
+        # raise KeyError('Other links were detected in the list - these were not handled!')
 
     display_filtered_links(filtered_links, **kwargs)
 
