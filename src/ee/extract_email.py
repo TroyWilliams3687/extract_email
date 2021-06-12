@@ -232,8 +232,8 @@ def main(*args, **kwargs):
 
     # Usage
 
-    $ extract "~/tmp/extract tbird email" --verbose --launch-pdf
-    $ extract "~/tmp/extract tbird email" --verbose --launch-csv
+    $ extract ~/tmp/"extract tbird email" --verbose --launch-pdf
+    $ extract ~/tmp/"extract tbird email" --verbose --launch-csv
 
 
     Reference:
