@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2021 Troy Williams
 
-# uuid       = d4cd5574-cb8a-11eb-9f40-79b2f2a7c797
+# uuid       =
 # author     = Troy Williams
 # email      = troy.williams@bluebill.net
-# date       = 2021-06-12
+# date       =
 # -----------
 
 # -----------
@@ -17,27 +17,28 @@
 # Makefile clean and contain only specific things that are required for the
 # individual repository.
 
+# -----------
+# Makefile.env
+
+# Makefile.env - should not be included with your repo. There is a
+# Makefile.env.sample that exists with the variables that these makefiles
+# require. Please make of copy of that, rename it and update the variables. Also
+# add it to the .gitignore file.
+
+include Makefile.env
 
 # -----------
-# Variables
-
-# The location to the python installation to use - we have an environment
-# variable set with the correct path. The variable is set in `~/.bashrc` and
-# will point to something like python=`~/opt/python_3.9.5/bin`
-
-PYPATH?=$(python)
-
-# define the binary to use
-PY?=$(PYPATH)/python3.9
+# Optional Includes
 
 include Makefile.python
-include Makefile.python.build  # Optional
+include Makefile.python.build
 
 
 # -----
 # make clean
 
-# Remove any created documents from the build process
+# Remove any created documents from the build process. This will probably be
+# custom for every repo.
 
 ## make clean - Remove the build components
 .PHONY: clean
@@ -52,7 +53,8 @@ clean:
 # ------
 # make remove
 
-# Remove the Virtual Environment and clean the cached files
+# Remove the Virtual Environment and clean the cached files. NOTE: For some
+# repos, it might be prudent to add `clean` as a dependency.
 
 ## make remove - Remove the virtual environment and all cache files.
 .PHONY: remove
