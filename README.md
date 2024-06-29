@@ -9,12 +9,6 @@ I have a lot of alerts for various research articles I am interested in with [Go
 1. [Install Rye](#installation-and-configuration)
 2. [Installation and Configuration](#rye-sync)
 3. [Activate](#activate-virtual-environment---traditional-approach)
-4. [expgen](#experiment-generator-usage)
-    - [expgen config](#config)
-    - [expgen create](#create)
-    - [expgen predict](#predict)
-5. [Build Docs](#build-docs)
-6. [Build Installer](#build-installer)
 
 
 ## Installation and Configuration
